@@ -80,5 +80,5 @@ app.get('/', (req, res) => {
 // Escoltem al port que ens doni el servidor, o el 8080 en local
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
-    console.log(\`[+] El Proxy està funcionant. Obre http://localhost:\${port} al teu navegador.\`);
+    console.log(`[+] El Proxy està funcionant. Obre http://localhost:${port} al teu navegador.`);
 })

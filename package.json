@@ -2,9 +2,9 @@
   "name": "proxy-escola",
   "version": "1.0.0",
   "description": "Un simple proxy web per saltar bloquejos",
-  "main": "server.js",
+  "main": "Server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node Server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
