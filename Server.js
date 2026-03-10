@@ -16,15 +16,15 @@ app.get('/yt', (req, res) => {
     const query = req.query.q || '';
     if (query) {
         // Si l'usuari ha buscat alguna cosa, redirigim a la cerca d'Invidious
-        res.redirect('/proxy/https://vid.puffyan.us/search?q=' + encodeURIComponent(query));
+        res.redirect('/proxy/https://yewtu.be/search?q=' + encodeURIComponent(query));
     } else {
-        res.redirect('/proxy/https://vid.puffyan.us/');
+        res.redirect('/proxy/https://yewtu.be/');
     }
 });
 
 // Ruta per veure un vídeo concret
 app.get('/video/:id', (req, res) => {
-    res.redirect('/proxy/https://vid.puffyan.us/watch?v=' + req.params.id);
+    res.redirect('/proxy/https://yewtu.be/watch?v=' + req.params.id);
 });
 
 // La pàgina d'inici amb botons d'accés directe
