@@ -4,7 +4,19 @@ const Unblocker = require('unblocker');
 const app = express();
 
 // Aquesta és la màgia: unblocker interceptarà les peticions i reescriurà la web
-const unblocker = new Unblocker({ prefix: '/proxy/' });
+const unblocker = new Unblocker({
+    prefix: '/proxy/',
+    requestMiddleware: [
+        function (data) {
+            // Tractament especial d'emergència per intentar carregar vídeos de YouTube
+            if (data.url.includes('youtube.com/watch') || data.url.includes('googlevideo.com')) {
+                // Força la versió d'escriptori o una qualitat inferior si cal, però sobretot
+                // avisa al servidor que no bloquegi els streams continus
+                data.clientResponse.removeHeader('X-Frame-Options');
+            }
+        }
+    ]
+});
 app.use(unblocker);
 
 // La pàgina d'inici que veuràs tu (una barra de cerca senzilla)
