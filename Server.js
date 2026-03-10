@@ -1,28 +1,130 @@
 const express = require('express');
 const Unblocker = require('unblocker');
+const { Transform } = require('stream');
 
 const app = express();
 
-// Aquesta és la màgia: unblocker interceptarà les peticions i reescriurà la web
-const unblocker = new Unblocker({ prefix: '/proxy/' });
+// =============================================
+// BLOQUEJADOR D'ANUNCIS - Llista de dominis d'anuncis
+// =============================================
+const adDomains = [
+    'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+    'google-analytics.com', 'googletagmanager.com', 'googletagservices.com',
+    'adservice.google.com', 'pagead2.googlesyndication.com',
+    'facebook.net', 'connect.facebook.net',
+    'ads.yahoo.com', 'analytics.yahoo.com',
+    'ad.doubleclick.net', 'adclick.g.doubleclick.net',
+    'adsense.google.com', 'adwords.google.com',
+    'tracking.', 'tracker.',
+    'amazon-adsystem.com', 'aax.amazon-adsystem.com',
+    'ads.twitter.com', 'analytics.twitter.com',
+    'ads.linkedin.com',
+    'pixel.facebook.com', 'pixel.ad',
+    'adnxs.com', 'adsrvr.org', 'adform.net',
+    'criteo.com', 'criteo.net',
+    'outbrain.com', 'taboola.com',
+    'pubmatic.com', 'openx.net', 'rubiconproject.com',
+    'moatads.com', 'serving-sys.com',
+    'popads.net', 'popcash.net', 'propellerads.com',
+    'mgid.com', 'revcontent.com',
+    'hotjar.com', 'hotjar.io',
+    'quantserve.com', 'scorecardresearch.com',
+    'mixpanel.com', 'segment.com', 'segment.io',
+    'optimizely.com', 'crazyegg.com',
+    'ad.atdmt.com', 'adcolony.com',
+    'appsflyer.com', 'adjust.com', 'branch.io',
+    'intercom.io', 'intercomcdn.com',
+    'zedo.com', 'adbrite.com',
+    'bidswitch.net', 'casalemedia.com',
+    'demdex.net', 'exelator.com',
+    'eyeota.net', 'krxd.net',
+    'liadm.com', 'mathtag.com',
+    'media.net', 'moatpixel.com',
+    'nr-data.net', 'omtrdc.net',
+    'pippio.com', 'rlcdn.com',
+    'tapad.com', 'turn.com'
+];
+
+// Funció per comprovar si una URL és d'un domini d'anuncis
+function isAdDomain(url) {
+    return adDomains.some(ad => url.includes(ad));
+}
+
+// =============================================
+// CONFIGURACIÓ D'UNBLOCKER AMB BLOQUEJADOR D'ANUNCIS
+// =============================================
+const unblocker = new Unblocker({
+    prefix: '/proxy/',
+    requestMiddleware: [
+        function blockAds(data) {
+            // Si la URL és d'un domini d'anuncis, bloquegem la petició
+            if (isAdDomain(data.url)) {
+                data.clientResponse.status(204).end();
+                return;
+            }
+        }
+    ],
+    responseMiddleware: [
+        function injectAdBlocker(data) {
+            // Només injectem CSS/JS anti-anuncis a pàgines HTML
+            if (data.contentType === 'text/html') {
+                var adBlockScript = new Transform({
+                    decodeStrings: false,
+                    transform(chunk, encoding, next) {
+                        let content = chunk.toString();
+                        // Injectem just abans del </head> un CSS que amaga anuncis comuns
+                        if (content.includes('</head>')) {
+                            const adBlockCSS = `
+                            <style id="proxy-magic-adblock">
+                                /* Amaguem contenidors d'anuncis comuns */
+                                [class*="ad-"], [class*="ads-"], [class*="advert"],
+                                [class*="banner-ad"], [class*="ad_"], [class*="adsbox"],
+                                [id*="ad-"], [id*="ads-"], [id*="advert"],
+                                [id*="banner-ad"], [id*="ad_"], [id*="adsbox"],
+                                [class*="sponsor"], [id*="sponsor"],
+                                [class*="promoted"], [id*="promoted"],
+                                iframe[src*="doubleclick"], iframe[src*="googlesyndication"],
+                                iframe[src*="facebook.com/plugins"],
+                                ins.adsbygoogle, .adsbygoogle,
+                                [data-ad], [data-ads], [data-adunit],
+                                .ad-container, .ad-wrapper, .ad-banner,
+                                .ad-slot, .ad-placeholder, .ad-block,
+                                #ad-container, #ad-wrapper, #ad-banner,
+                                div[aria-label="advertisement"],
+                                div[data-google-query-id],
+                                amp-ad, amp-embed, amp-sticky-ad {
+                                    display: none !important;
+                                    visibility: hidden !important;
+                                    height: 0 !important;
+                                    max-height: 0 !important;
+                                    overflow: hidden !important;
+                                }
+                            </style>`;
+                            content = content.replace('</head>', adBlockCSS + '</head>');
+                        }
+                        this.push(content);
+                        next();
+                    }
+                });
+                data.stream = data.stream.pipe(adBlockScript);
+            }
+        }
+    ]
+});
 app.use(unblocker);
 
 // =============================================
 // RUTA ESPECIAL: YouTube -> Invidious
-// Quan algú escriu una URL de YouTube, el redirigim
-// a un frontend alternatiu lleuger que SÍ funciona pel proxy.
 // =============================================
 app.get('/yt', (req, res) => {
     const query = req.query.q || '';
     if (query) {
-        // Si l'usuari ha buscat alguna cosa, redirigim a la cerca d'Invidious
         res.redirect('/proxy/https://yewtu.be/search?q=' + encodeURIComponent(query));
     } else {
         res.redirect('/proxy/https://yewtu.be/');
     }
 });
 
-// Ruta per veure un vídeo concret
 app.get('/video/:id', (req, res) => {
     res.redirect('/proxy/https://yewtu.be/watch?v=' + req.params.id);
 });
@@ -69,6 +171,17 @@ app.get('/', (req, res) => {
                     color: rgba(255,255,255,0.5);
                     margin-bottom: 30px;
                     font-size: 0.9em;
+                }
+                .badge {
+                    display: inline-block;
+                    background: linear-gradient(135deg, #10b981, #059669);
+                    color: white;
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 0.7em;
+                    margin-left: 8px;
+                    vertical-align: middle;
+                    -webkit-text-fill-color: white;
                 }
                 input { 
                     padding: 15px; 
@@ -161,12 +274,21 @@ app.get('/', (req, res) => {
                     margin-bottom: 12px;
                     font-size: 1.1em;
                 }
+                .adblock-info {
+                    margin-top: 15px;
+                    padding: 10px;
+                    background: rgba(16,185,129,0.1);
+                    border-radius: 8px;
+                    border: 1px solid rgba(16,185,129,0.2);
+                    font-size: 0.8em;
+                    color: #6ee7b7;
+                }
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>Navegador Magic</h1>
-                <p class="subtitle">Navega lliurement per internet</p>
+                <h1>Navegador Magic <span class="badge">AdBlock ON</span></h1>
+                <p class="subtitle">Navega lliurement per internet sense anuncis</p>
                 
                 <!-- Barra principal -->
                 <form onsubmit="event.preventDefault(); let u = document.getElementById('url').value; if(!u.startsWith('http')) u = 'https://' + u; window.location.href = '/proxy/' + u;">
@@ -178,7 +300,7 @@ app.get('/', (req, res) => {
 
                 <!-- Accessos directes -->
                 <div class="shortcuts">
-                    <a href="/proxy/https://vid.puffyan.us/" class="btn btn-yt">YouTube</a>
+                    <a href="/proxy/https://yewtu.be/" class="btn btn-yt">YouTube</a>
                     <a href="/proxy/https://ca.wikipedia.org/" class="btn btn-wiki">Viquipèdia</a>
                     <a href="/proxy/https://old.reddit.com/" class="btn btn-reddit">Reddit</a>
                     <a href="/proxy/https://duckduckgo.com/" class="btn btn-search">DuckDuckGo</a>
@@ -192,6 +314,10 @@ app.get('/', (req, res) => {
                         <button type="submit" class="btn btn-yt" style="width:100%;">Buscar Vídeos</button>
                     </form>
                 </div>
+
+                <div class="adblock-info">
+                    🛡️ Bloquejador d'anuncis actiu — +50 dominis d'anuncis bloquejats automàticament
+                </div>
             </div>
         </body>
         </html>
@@ -201,5 +327,5 @@ app.get('/', (req, res) => {
 // Escoltem al port que ens doni el servidor, o el 8080 en local
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
-    console.log('[+] El Proxy està funcionant. Obre http://localhost:' + port + ' al teu navegador.');
+    console.log('[+] El Proxy està funcionant amb AdBlock. Obre http://localhost:' + port + ' al teu navegador.');
 })
